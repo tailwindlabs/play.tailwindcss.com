@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@ctrl/tinycolor": "^3.1.4",
+    "@tailwindcss/aspect-ratio": "0.1.4",
     "@tailwindcss/custom-forms": "0.2.1",
     "@tailwindcss/ui": "0.6.2",
     "@typescript-eslint/eslint-plugin": "2.x",

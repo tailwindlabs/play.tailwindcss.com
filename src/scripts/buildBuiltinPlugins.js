@@ -3,7 +3,7 @@ const path = require('path')
 const fs = require('fs').promises
 const versions = require('../preval/versions')
 
-const plugins = ['@tailwindcss/custom-forms', '@tailwindcss/ui']
+const plugins = ['@tailwindcss/aspect-ratio', '@tailwindcss/custom-forms', '@tailwindcss/ui']
 
 plugins.forEach(async (plugin) => {
   const pkg = require(`${plugin}/package.json`)
