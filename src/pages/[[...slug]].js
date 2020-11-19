@@ -14,6 +14,7 @@ import Error from 'next/error'
 import { ErrorOverlay } from '../components/ErrorOverlay'
 import Router from 'next/router'
 import { Header } from '../components/Header'
+import { Format } from '../components/Format'
 import { Share } from '../components/Share'
 import { TabBar } from '../components/TabBar'
 import { sizeToObject } from '../utils/size'
@@ -293,6 +294,7 @@ function Pen({
           activeTab={activeTab}
           tailwindVersion={tailwindVersion}
         />
+        <Format editorRef={editorRef} />
       </Header>
       <main className="flex-auto relative border-t border-gray-200 dark:border-gray-800">
         {initialContent && typeof size.current !== 'undefined' ? (
