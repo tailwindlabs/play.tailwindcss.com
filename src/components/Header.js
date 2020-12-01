@@ -21,7 +21,7 @@ export function Header({
         <label className="relative">
           <span className="sr-only">Tailwind CSS version</span>
           <select
-            className="appearance-none block bg-transparent pr-6 py-1 text-gray-500 dark:text-gray-400 font-medium text-sm focus:outline-none focus:text-gray-900 dark:focus:text-white transition-colors duration-200"
+            className="appearance-none block bg-transparent pr-6 py-1 text-gray-500 dark:text-gray-400 font-medium text-sm focus:outline-none focus:text-gray-900 dark:focus:text-white transition-colors duration-200 dark:focus:bg-gray-900"
             value={tailwindVersion}
             onChange={(e) => onChangeTailwindVersion(e.target.value)}
           >
