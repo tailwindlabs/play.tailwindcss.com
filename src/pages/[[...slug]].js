@@ -16,8 +16,8 @@ import { ErrorOverlay } from '../components/ErrorOverlay'
 import Router from 'next/router'
 import { Header } from '../components/Header'
 import { Share } from '../components/Share'
-import { Reset } from '../components/Reset'
 import { TabBar } from '../components/TabBar'
+import { ApplyDraftModal } from '../components/ApplyDraftModal'
 import { sizeToObject } from '../utils/size'
 import { getLayoutQueryString } from '../utils/getLayoutQueryString'
 import { get } from '../utils/database'
@@ -48,8 +48,9 @@ function Pen({
   )
   const isMd = useMedia('(min-width: 768px)')
   const [dirty, setDirty] = useState(false)
+  const [hasDraft, setHasDraft] = useState(false)
   const [renderEditor, setRenderEditor] = useState(false)
-  const [localEditorContent, setLocalEditorContent] = useLocalStorage(EDITOR_CONTENT_KEY)
+  const [localEditorContent, setLocalEditorContent] = useLocalStorage(serverSideContent ? serverSideContent.ID : EDITOR_CONTENT_KEY)
   const [initialContent, setInitialContent] = useState()
   const [
     error,
@@ -97,14 +98,11 @@ function Pen({
 
   useEffect(() => {
     if (!initialContent) {
-      if (localEditorContent) {
-        setInitialContent(localEditorContent)
-      } else {
-        setInitialContent(serverSideContent || defaultContent)
-        setLocalEditorContent(serverSideContent || defaultContent)
-      }
+      const hasLocalChanges = !isContentEqual(localEditorContent, serverSideContent || defaultContent)
+      setHasDraft(hasLocalChanges)
+      setInitialContent(serverSideContent || defaultContent)
     }
-  }, [serverSideContent, localEditorContent, initialContent, setLocalEditorContent])
+  }, [serverSideContent, localEditorContent, initialContent])
 
   useEffect(() => {
     if (initialContent) {
@@ -233,34 +231,6 @@ function Pen({
     }
   }, [isMd, setSize, size.layout, activePane])
 
-  useIsomorphicLayoutEffect(() => {
-    const applyLocalStorage = ({ newValue }) => {
-      try {
-        if (newValue) {
-          const content = JSON.parse(newValue)
-          if (size.layout === 'preview') {
-            // only sync preview to prevent unnecessary rerender
-            inject({ html: content.html })
-          } else {
-            setInitialContent(content)
-          }
-        }
-      } catch (error) {
-        console.log(error)
-      }
-    }
-
-    // force rerender editor if layout changed and current editor state and localStorage are out of sync
-    if (size.layout !== 'preview' && !isContentEqual(localEditorContent, initialContent)) {
-      setInitialContent(localEditorContent)
-    }
-
-    window.addEventListener('storage', applyLocalStorage)
-    return () => {
-      window.removeEventListener('storage', applyLocalStorage)
-    }
-  }, [size.layout])
-
   useEffect(() => {
     if (isMd) {
       if (size.layout !== 'preview') {
@@ -313,13 +283,17 @@ function Pen({
     [size.layout, responsiveDesignMode, responsiveSize]
   )
 
-  const onResetEditor = useCallback(() => {
-    if (window.confirm("Are you sure you want to reset local changes?")) {
-      const newContent = serverSideContent || defaultContent
-      setLocalEditorContent(newContent)
-      setInitialContent(newContent)
-    }
-  }, [serverSideContent, setLocalEditorContent])
+  const onClearDraft = () => {
+    setDirty(false)
+    setHasDraft(false)
+    setLocalEditorContent(initialContent)
+  }
+
+  const onApplyDraft = () => {
+    setDirty(true)
+    setHasDraft(false)
+    setInitialContent(localEditorContent)
+  }
 
   // initial state resets
   useEffect(() => {
@@ -376,10 +350,6 @@ function Pen({
           compileNow({ _recompile: true, tailwindVersion: version })
         }}
       >
-        <Reset
-          dirty={dirty}
-          onClick={onResetEditor}
-        />
         <Share
           editorRef={editorRef}
           onShareStart={onShareStart}
@@ -471,6 +441,7 @@ function Pen({
           </>
         ) : null}
       </main>
+      {hasDraft && <ApplyDraftModal onConfirm={onApplyDraft} onDismiss={onClearDraft} />}
     </>
   )
 }
