@@ -98,7 +98,7 @@ function Pen({
 
   useEffect(() => {
     if (!initialContent) {
-      const hasLocalChanges = !isContentEqual(localEditorContent, serverSideContent || defaultContent)
+      const hasLocalChanges = localEditorContent && !isContentEqual(localEditorContent, serverSideContent || defaultContent)
       setHasDraft(hasLocalChanges)
       setInitialContent(serverSideContent || defaultContent)
     }
