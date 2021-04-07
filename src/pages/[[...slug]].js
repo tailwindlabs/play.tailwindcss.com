@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useIsomorphicLayoutEffect } from '../hooks/useIsomorphicLayoutEffect'
+import useLocalStorage from '../hooks/useLocalStorage'
 import Worker from 'worker-loader?publicPath=/_next/&filename=static/chunks/[name].[hash].js&chunkFilename=static/chunks/[id].[contenthash].worker.js!../workers/postcss.worker.js'
 import { requestResponse } from '../utils/workers'
 import { debounce } from 'debounce'
@@ -16,6 +17,7 @@ import Router from 'next/router'
 import { Header } from '../components/Header'
 import { Share } from '../components/Share'
 import { TabBar } from '../components/TabBar'
+import { ApplyDraftModal } from '../components/ApplyDraftModal'
 import { sizeToObject } from '../utils/size'
 import { getLayoutQueryString } from '../utils/getLayoutQueryString'
 import { get } from '../utils/database'
@@ -25,10 +27,12 @@ import Head from 'next/head'
 const HEADER_HEIGHT = 60 - 1
 const TAB_BAR_HEIGHT = 40
 const RESIZER_SIZE = 1
+const RESIZER_CAP = 320
 const DEFAULT_RESPONSIVE_SIZE = { width: 540, height: 720 }
+const EDITOR_CONTENT_KEY = 'editorContent'
 
 function Pen({
-  initialContent,
+  serverSideContent,
   initialPath,
   initialLayout,
   initialResponsiveSize,
@@ -44,7 +48,10 @@ function Pen({
   )
   const isMd = useMedia('(min-width: 768px)')
   const [dirty, setDirty] = useState(false)
+  const [hasDraft, setHasDraft] = useState(false)
   const [renderEditor, setRenderEditor] = useState(false)
+  const [localEditorContent, setLocalEditorContent] = useLocalStorage(serverSideContent ? serverSideContent.ID : EDITOR_CONTENT_KEY)
+  const [initialContent, setInitialContent] = useState()
   const [
     error,
     setError,
@@ -63,9 +70,7 @@ function Pen({
   const [responsiveSize, setResponsiveSize] = useState(
     initialResponsiveSize || DEFAULT_RESPONSIVE_SIZE
   )
-  const [tailwindVersion, setTailwindVersion] = useState(
-    toValidTailwindVersion(initialContent.version)
-  )
+  const [tailwindVersion, setTailwindVersion] = useState()
 
   useEffect(() => {
     setDirty(true)
@@ -92,27 +97,37 @@ function Pen({
   }, [dirty])
 
   useEffect(() => {
-    setDirty(false)
-    setTailwindVersion(toValidTailwindVersion(initialContent.version))
-    if (
-      shouldClearOnUpdate &&
-      previewRef.current &&
-      previewRef.current.contentWindow
-    ) {
-      previewRef.current.contentWindow.postMessage(
-        {
-          clear: true,
-        },
-        '*'
-      )
-      inject({ html: initialContent.html })
-      compileNow({
-        css: initialContent.css,
-        config: initialContent.config,
-        tailwindVersion: toValidTailwindVersion(initialContent.version),
-      })
+    if (!initialContent) {
+      const hasLocalChanges = localEditorContent && !isContentEqual(localEditorContent, serverSideContent || defaultContent)
+      setHasDraft(hasLocalChanges)
+      setInitialContent(serverSideContent || defaultContent)
     }
-  }, [initialContent.ID])
+  }, [serverSideContent, localEditorContent, initialContent])
+
+  useEffect(() => {
+    if (initialContent) {
+      setDirty(false)
+      setTailwindVersion(toValidTailwindVersion(initialContent.version))
+      if (
+        shouldClearOnUpdate &&
+        previewRef.current &&
+        previewRef.current.contentWindow
+      ) {
+        previewRef.current.contentWindow.postMessage(
+          {
+            clear: true,
+          },
+          '*'
+        )
+        inject({ html: initialContent.html })
+        compileNow({
+          css: initialContent.css,
+          config: initialContent.config,
+          tailwindVersion: toValidTailwindVersion(initialContent.version),
+        })
+      }
+    }
+  }, [initialContent])
 
   const inject = useCallback((content) => {
     previewRef.current.contentWindow.postMessage(content, '*')
@@ -150,6 +165,7 @@ function Pen({
   const onChange = useCallback(
     (document, content) => {
       setDirty(true)
+      setLocalEditorContent(content)
       if (document === 'html') {
         inject({ html: content.html })
       } else {
@@ -158,6 +174,8 @@ function Pen({
     },
     [inject, compile]
   )
+
+  const isContentEqual = (a, b) => a && b && a.html === b.html && a.css === b.css && a.config === b.config
 
   useEffect(() => {
     worker.current = new Worker()
@@ -175,11 +193,11 @@ function Pen({
             : document.documentElement.clientWidth
 
         if (isMd && size.layout !== 'preview') {
-          const min = size.layout === 'vertical' ? 320 : 320 + TAB_BAR_HEIGHT
+          const min = size.layout === 'vertical' ? RESIZER_CAP : RESIZER_CAP + TAB_BAR_HEIGHT
           const max =
             size.layout === 'vertical'
               ? windowSize - min - RESIZER_SIZE
-              : windowSize - 320 - RESIZER_SIZE
+              : windowSize - RESIZER_CAP - RESIZER_SIZE
 
           return {
             ...size,
@@ -265,6 +283,18 @@ function Pen({
     [size.layout, responsiveDesignMode, responsiveSize]
   )
 
+  const onClearDraft = () => {
+    setDirty(false)
+    setHasDraft(false)
+    setLocalEditorContent(initialContent)
+  }
+
+  const onApplyDraft = () => {
+    setDirty(true)
+    setHasDraft(false)
+    setInitialContent(localEditorContent)
+  }
+
   // initial state resets
   useEffect(() => {
     setSize((size) => ({ ...size, layout: initialLayout }))
@@ -277,14 +307,11 @@ function Pen({
     setActiveTab(initialActiveTab)
   }, [initialActiveTab])
 
-  const isDefaultContent =
-    initialContent.html === defaultContent.html &&
-    initialContent.css === defaultContent.css &&
-    initialContent.config === defaultContent.config
+  const isDefaultContent = isContentEqual(initialContent, defaultContent)
 
   return (
     <>
-      <Head>
+      {initialContent && <Head>
         <meta
           property="og:url"
           content={`https://play.tailwindcss.com${
@@ -309,7 +336,7 @@ function Pen({
             content="https://play.tailwindcss.com/social-card.jpg"
           />
         )}
-      </Head>
+      </Head>}
       <Header
         layout={size.layout}
         onChangeLayout={(layout) => setSize((size) => ({ ...size, layout }))}
@@ -414,6 +441,7 @@ function Pen({
           </>
         ) : null}
       </main>
+      {hasDraft && <ApplyDraftModal onConfirm={onApplyDraft} onDismiss={onClearDraft} />}
     </>
   )
 }
@@ -447,10 +475,7 @@ export async function getServerSideProps({ params, res, query }) {
       'public, max-age=0, must-revalidate, s-maxage=31536000'
     )
     return {
-      props: {
-        initialContent: defaultContent,
-        ...layoutProps,
-      },
+      props: layoutProps,
     }
   }
 
@@ -463,7 +488,7 @@ export async function getServerSideProps({ params, res, query }) {
   }
 
   try {
-    const { Item: initialContent } = await get({
+    const { Item: serverSideContent } = await get({
       ID: params.slug[0],
     })
 
@@ -474,8 +499,8 @@ export async function getServerSideProps({ params, res, query }) {
 
     return {
       props: {
-        initialContent,
-        initialPath: `/${initialContent.ID}${getLayoutQueryString({
+        serverSideContent,
+        initialPath: `/${serverSideContent.ID}${getLayoutQueryString({
           layout: query.layout,
           responsiveSize: query.size,
           file: query.file,
