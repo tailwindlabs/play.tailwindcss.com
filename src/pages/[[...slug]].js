@@ -14,7 +14,7 @@ import { Preview } from '../components/Preview'
 import Error from 'next/error'
 import { ErrorOverlay } from '../components/ErrorOverlay'
 import Router from 'next/router'
-import { Header } from '../components/Header'
+import { Header } from '../components/layout'
 import { Share } from '../components/Share'
 import { TabBar } from '../components/TabBar'
 import { ApplyDraftModal } from '../components/ApplyDraftModal'
@@ -23,6 +23,7 @@ import { getLayoutQueryString } from '../utils/getLayoutQueryString'
 import { get } from '../utils/database'
 import { toValidTailwindVersion } from '../utils/toValidTailwindVersion'
 import Head from 'next/head'
+import { LAYOUT } from '../constants'
 
 const HEADER_HEIGHT = 60 - 1
 const TAB_BAR_HEIGHT = 40
@@ -37,6 +38,7 @@ function Pen({
   initialLayout,
   initialResponsiveSize,
   initialActiveTab,
+  enableWatch,
 }) {
   const previewRef = useRef()
   const worker = useRef()
@@ -44,7 +46,7 @@ function Pen({
   const [resizing, setResizing] = useState(false)
   const [activeTab, setActiveTab] = useState(initialActiveTab)
   const [activePane, setActivePane] = useState(
-    initialLayout === 'preview' ? 'preview' : 'editor'
+    initialLayout === LAYOUT.preview ? 'preview' : 'editor'
   )
   const isMd = useMedia('(min-width: 768px)')
   const [dirty, setDirty] = useState(false)
@@ -188,14 +190,14 @@ function Pen({
     function updateSize() {
       setSize((size) => {
         const windowSize =
-          size.layout === 'horizontal'
+          size.layout === LAYOUT.horizontal
             ? document.documentElement.clientHeight - HEADER_HEIGHT
             : document.documentElement.clientWidth
 
-        if (isMd && size.layout !== 'preview') {
-          const min = size.layout === 'vertical' ? RESIZER_CAP : RESIZER_CAP + TAB_BAR_HEIGHT
+        if (isMd && size.layout !== LAYOUT.preview && size.layout !== LAYOUT.editor) {
+          const min = size.layout === LAYOUT.vertical ? RESIZER_CAP : RESIZER_CAP + TAB_BAR_HEIGHT
           const max =
-            size.layout === 'vertical'
+            size.layout === LAYOUT.vertical
               ? windowSize - min - RESIZER_SIZE
               : windowSize - RESIZER_CAP - RESIZER_SIZE
 
@@ -211,7 +213,7 @@ function Pen({
         }
 
         const newSize =
-          (isMd && size.layout !== 'preview') ||
+          (isMd && size.layout !== LAYOUT.preview) ||
           (!isMd && activePane === 'editor')
             ? windowSize
             : 0
@@ -244,19 +246,41 @@ function Pen({
   useEffect(() => {
     if (resizing) {
       document.body.classList.add(
-        size.layout === 'vertical' ? 'cursor-ew-resize' : 'cursor-ns-resize'
+        size.layout === LAYOUT.vertical ? 'cursor-ew-resize' : 'cursor-ns-resize'
       )
     } else {
       document.body.classList.remove(
-        size.layout === 'vertical' ? 'cursor-ew-resize' : 'cursor-ns-resize'
+        size.layout === LAYOUT.vertical ? 'cursor-ew-resize' : 'cursor-ns-resize'
       )
     }
   }, [resizing])
 
+  useIsomorphicLayoutEffect(() => {
+    const applyLocalStorage = ({ newValue }) => {
+      try {
+        if (newValue) {
+          const content = JSON.parse(newValue)
+          inject({ html: content.html })
+          compile({ css: content.css, config: content.config })
+        }
+      } catch (error) {
+        console.log(error)
+      }
+    }
+
+    if (enableWatch) {
+      window.addEventListener('storage', applyLocalStorage)
+    }
+
+    return () => {
+      window.removeEventListener('storage', applyLocalStorage)
+    }
+  }, [size.layout])
+
   const updateCurrentSize = useCallback((newSize) => {
     setSize((size) => {
       const windowSize =
-        size.layout === 'vertical'
+        size.layout === LAYOUT.vertical
           ? document.documentElement.clientWidth
           : document.documentElement.clientHeight - HEADER_HEIGHT
       const percentage = newSize / windowSize
@@ -293,6 +317,12 @@ function Pen({
     setDirty(true)
     setHasDraft(false)
     setInitialContent(localEditorContent)
+  }
+
+  const onEnableMultiscreen = () => {
+    const { origin, pathname } = window.location
+    setSize((size) => ({ ...size, layout: LAYOUT.editor }))
+    window.open(`${origin}${pathname}?watch=true&layout=${LAYOUT.preview}`, '_blank', 'noopener,noreferrer')
   }
 
   // initial state resets
@@ -340,6 +370,7 @@ function Pen({
       <Header
         layout={size.layout}
         onChangeLayout={(layout) => setSize((size) => ({ ...size, layout }))}
+        onEnableMultiscreen={onEnableMultiscreen}
         responsiveDesignMode={responsiveDesignMode}
         onToggleResponsiveDesignMode={() =>
           setResponsiveDesignMode(!responsiveDesignMode)
@@ -365,10 +396,10 @@ function Pen({
       <main className="flex-auto relative border-t border-gray-200 dark:border-gray-800">
         {initialContent && typeof size.current !== 'undefined' ? (
           <>
-            {(!isMd || size.layout !== 'preview') && (
+            {(!isMd || size.layout !== LAYOUT.preview) && (
               <TabBar
                 width={
-                  size.layout === 'vertical' && isMd ? size.current : '100%'
+                  size.layout === LAYOUT.vertical && isMd ? size.current : '100%'
                 }
                 isLoading={isLoading}
                 showPreviewTab={!isMd}
@@ -386,7 +417,7 @@ function Pen({
               />
             )}
             <SplitPane
-              split={size.layout === 'horizontal' ? 'horizontal' : 'vertical'}
+              split={size.layout === LAYOUT.horizontal ? 'horizontal' : 'vertical'}
               minSize={size.min}
               maxSize={size.max}
               size={size.current}
@@ -395,9 +426,9 @@ function Pen({
               pane1Style={{ display: 'flex', flexDirection: 'column' }}
               onDragStarted={() => setResizing(true)}
               onDragFinished={() => setResizing(false)}
-              allowResize={isMd && size.layout !== 'preview'}
+              allowResize={isMd && size.layout !== LAYOUT.preview && size.layout !== LAYOUT.editor}
               resizerClassName={
-                isMd && size.layout !== 'preview'
+                isMd && size.layout !== LAYOUT.preview && size.layout !== LAYOUT.editor
                   ? 'Resizer'
                   : 'Resizer-collapsed'
               }
@@ -455,13 +486,14 @@ export default function App({ errorCode, ...props }) {
 
 export async function getServerSideProps({ params, res, query }) {
   const layoutProps = {
-    initialLayout: ['vertical', 'horizontal', 'preview'].includes(query.layout)
+    initialLayout: [LAYOUT.vertical, LAYOUT.horizontal, LAYOUT.preview, LAYOUT.editor].includes(query.layout)
       ? query.layout
-      : 'vertical',
+      : LAYOUT.vertical,
     initialResponsiveSize: sizeToObject(query.size),
     initialActiveTab: ['html', 'css', 'config'].includes(query.file)
       ? query.file
       : 'html',
+    enableWatch: query.watch === 'true',
   }
 
   console.log(params.slug)
@@ -504,6 +536,7 @@ export async function getServerSideProps({ params, res, query }) {
           layout: query.layout,
           responsiveSize: query.size,
           file: query.file,
+          watch: query.watch,
         })}`,
         ...layoutProps,
       },
