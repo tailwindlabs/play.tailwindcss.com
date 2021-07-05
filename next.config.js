@@ -152,7 +152,7 @@ module.exports = withTM({
     })
 
     config.module.rules.push({
-      test: /tailwindcss\/lib\/plugins\/preflight\.js/,
+      test: require.resolve('tailwindcss/lib/plugins/preflight.js'),
       use: [createReadFileReplaceLoader(2)],
     })
 
